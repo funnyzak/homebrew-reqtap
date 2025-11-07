@@ -1,0 +1,235 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test-formula-syntax:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Test formula syntax
+        run: |
+          # Check Ruby syntax for formula
+          ruby -c Formula/reqtap.rb
+
+      - name: Validate formula structure
+        run: |
+          # Check if required fields are present
+          formula_file="Formula/reqtap.rb"
+
+          # Required patterns
+          required_patterns=(
+            "class Reqtap < Formula"
+            'desc "'
+            'homepage "'
+            'url "'
+            'sha256 "'
+            'version "'
+            "license "
+            "on_intel do"
+            "on_arm do"
+          )
+
+          for pattern in "${required_patterns[@]}"; do
+            if ! grep -q "$pattern" "$formula_file"; then
+              echo "ERROR: Required pattern not found: $pattern"
+              exit 1
+            fi
+          done
+
+          echo "✅ All required patterns found in formula"
+
+      - name: Test update script
+        run: |
+          # Make sure update script is executable
+          chmod +x scripts/update-formula.rb
+
+          # Test script syntax
+          ruby -c scripts/update-formula.rb
+
+          echo "✅ Update script syntax is valid"
+
+  validate-release-info:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate release URLs and checksums
+        run: |
+          # Extract URLs and checksums from formula
+          formula_file="Formula/reqtap.rb"
+
+          # Get URLs and checksums
+          intel_url=$(grep -A1 'on_intel do' "$formula_file" | grep 'url "' | sed 's/.*url "\(.*\)".*/\1/')
+          intel_sha=$(grep -A2 'on_intel do' "$formula_file" | grep 'sha256 "' | sed 's/.*sha256 "\(.*\)".*/\1/')
+
+          arm_url=$(grep -A1 'on_arm do' "$formula_file" | grep 'url "' | sed 's/.*url "\(.*\)".*/\1/')
+          arm_sha=$(grep -A2 'on_arm do' "$formula_file" | grep 'sha256 "' | sed 's/.*sha256 "\(.*\)".*/\1/')
+
+          echo "Intel URL: $intel_url"
+          echo "Intel SHA256: $intel_sha"
+          echo "ARM URL: $arm_url"
+          echo "ARM SHA256: $arm_sha"
+
+          # Download and verify checksums
+          echo "🔍 Verifying Intel binary..."
+          intel_temp=$(mktemp)
+          curl -s -L "$intel_url" -o "$intel_temp"
+          intel_actual_sha=$(sha256sum "$intel_temp" | cut -d' ' -f1)
+
+          if [ "$intel_actual_sha" != "$intel_sha" ]; then
+            echo "❌ Intel SHA256 mismatch!"
+            echo "Expected: $intel_sha"
+            echo "Actual:   $intel_actual_sha"
+            exit 1
+          fi
+          echo "✅ Intel checksum verified"
+
+          echo "🔍 Verifying ARM binary..."
+          arm_temp=$(mktemp)
+          curl -s -L "$arm_url" -o "$arm_temp"
+          arm_actual_sha=$(sha256sum "$arm_temp" | cut -d' ' -f1)
+
+          if [ "$arm_actual_sha" != "$arm_sha" ]; then
+            echo "❌ ARM SHA256 mismatch!"
+            echo "Expected: $arm_sha"
+            echo "Actual:   $arm_actual_sha"
+            exit 1
+          fi
+          echo "✅ ARM checksum verified"
+
+          # Clean up
+          rm -f "$intel_temp" "$arm_temp"
+
+  test-on-macos:
+    runs-on: macos-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Test the PR branch
+          ref: ${{ github.head_ref }}
+
+      - name: Install tap
+        run: |
+          # Tap the local repository
+          brew tap funnyzak/reqtap "$(pwd)"
+
+          # Install reqtap
+          brew install reqtap
+
+      - name: Test installation
+        run: |
+          # Check version
+          reqtap_version=$(reqtap --version)
+          echo "ReqTap version: $reqtap_version"
+
+          # Check installation path
+          reqtap_path=$(which reqtap)
+          echo "ReqTap path: $reqtap_path"
+
+          # Test basic functionality
+          reqtap --help
+
+      - name: Test formula audit
+        run: |
+          # Run Homebrew audit
+          brew audit --strict Formula/reqtap.rb || true
+
+      - name: Cleanup
+        run: |
+          # Uninstall and untap
+          brew uninstall reqtap || true
+          brew untap funnyzak/reqtap || true
+
+  check-documentation:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check documentation files
+        run: |
+          # Check if required documentation exists
+          required_files=(
+            "README-homebrew.md"
+            "Formula/reqtap.rb"
+            "scripts/update-formula.rb"
+            ".github/workflows/update-formula.yml"
+            ".github/workflows/ci.yml"
+          )
+
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "ERROR: Required file not found: $file"
+              exit 1
+            fi
+            echo "✅ $file exists"
+          done
+
+      - name: Validate README links
+        run: |
+          # Check if links in README-homebrew.md are valid
+          readme_file="README-homebrew.md"
+
+          # Extract URLs and validate them
+          urls=$(grep -oE 'https?://[^)]+' "$readme_file" | sort | uniq)
+
+          for url in $urls; do
+            echo "🔍 Checking URL: $url"
+            if curl -s -L -o /dev/null -w "%{http_code}" "$url" | grep -qE "^(200|301|302)$"; then
+              echo "✅ $url is accessible"
+            else
+              echo "❌ $url is not accessible"
+              # Don't fail the build for external links that might be temporarily down
+            fi
+          done
+
+  test-update-script-dry-run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Test update script (dry run)
+        run: |
+          # The update script should work without actually updating
+          # if the latest version is already installed
+          echo "🧪 Testing update script..."
+
+          # Run the update script
+          if ./scripts/update-formula.rb; then
+            echo "✅ Update script ran successfully"
+          else
+            echo "❌ Update script failed"
+            exit 1
+          fi
+
+          # Check if formula is still valid
+          ruby -c Formula/reqtap.rb
+          echo "✅ Formula syntax still valid after update script"

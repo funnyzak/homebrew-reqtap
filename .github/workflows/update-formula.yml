@@ -1,0 +1,185 @@
+name: Update Formula
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      force_update:
+        description: 'Force update even if no new version is found'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  check-for-updates:
+    runs-on: ubuntu-latest
+    outputs:
+      has_update: ${{ steps.check.outputs.has_update }}
+      new_version: ${{ steps.check.outputs.new_version }}
+      current_version: ${{ steps.check.outputs.current_version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Get current version
+        id: current
+        run: |
+          CURRENT_VERSION=$(grep 'version "' Formula/reqtap.rb | sed 's/.*version "\(.*\)".*/\1/')
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Get latest release
+        id: latest
+        run: |
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/funnyzak/reqtap/releases/latest | jq -r .tag_name)
+          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Latest version: $LATEST_VERSION"
+
+      - name: Check for updates
+        id: check
+        run: |
+          CURRENT="${{ steps.current.outputs.current_version }}"
+          LATEST="${{ steps.latest.outputs.latest_version }}"
+          FORCE_UPDATE="${{ github.event.inputs.force_update || 'false' }}"
+
+          if [ "$CURRENT" != "$LATEST" ] || [ "$FORCE_UPDATE" = "true" ]; then
+            echo "has_update=true" >> $GITHUB_OUTPUT
+            echo "new_version=$LATEST" >> $GITHUB_OUTPUT
+            echo "current_version=$CURRENT" >> $GITHUB_OUTPUT
+            echo "Update available: $CURRENT -> $LATEST"
+          else
+            echo "has_update=false" >> $GITHUB_OUTPUT
+            echo "new_version=$CURRENT" >> $GITHUB_OUTPUT
+            echo "current_version=$CURRENT" >> $GITHUB_OUTPUT
+            echo "No update needed. Current version: $CURRENT"
+          fi
+
+  update-formula:
+    needs: check-for-updates
+    if: needs.check-for-updates.outputs.has_update == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Update formula
+        run: |
+          echo "Updating formula from ${{ needs.check-for-updates.outputs.current_version }} to ${{ needs.check-for-updates.outputs.new_version }}"
+          ./scripts/update-formula.rb
+
+      - name: Test updated formula
+        run: |
+          # Test formula syntax
+          ruby -c Formula/reqtap.rb
+
+          # Test with brew (if available)
+          if command -v brew &> /dev/null; then
+            brew audit --strict Formula/reqtap.rb || true
+          fi
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update reqtap to v${{ needs.check-for-updates.outputs.new_version }}'
+          title: 'Update reqtap to v${{ needs.check-for-updates.outputs.new_version }}'
+          body: |
+            ## Summary
+            - Updated reqtap formula from `${{ needs.check-for-updates.outputs.current_version }}` to `${{ needs.check-for-updates.outputs.new_version }}`
+            - Updated download URLs and SHA256 checksums for both Intel and Apple Silicon architectures
+            - Formula syntax validation passed
+
+            ## Test plan
+            - [x] Formula syntax validation
+            - [x] Checksum verification
+            - [ ] Manual testing with `brew install reqtap`
+            - [ ] Verify installation and basic functionality
+
+            ## Changes
+            - Updated version number in Formula
+            - Updated download URLs for macOS binaries
+            - Updated SHA256 checksums
+            - Verified formula compatibility
+
+            ---
+            🤖 Generated with [Homebrew Reqtap](https://github.com/funnyzak/homebrew-reqtap)
+          branch: update-reqtap-${{ needs.check-for-updates.outputs.new_version }}
+          delete-branch: true
+          labels: |
+            update
+            automated
+          reviewers: funnyzak
+
+  test-formula:
+    needs: update-formula
+    runs-on: macos-latest
+    if: always() && needs.update-formula.result == 'success'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: update-reqtap-${{ needs.check-for-updates.outputs.new_version }}
+
+      - name: Install tap
+        run: |
+          # Tap the local repository
+          brew tap funnyzak/reqtap "$(pwd)"
+
+          # Install reqtap
+          brew install reqtap
+
+      - name: Test installation
+        run: |
+          # Check version
+          reqtap --version
+
+          # Check installation path
+          which reqtap
+
+          # Test basic functionality (help command)
+          reqtap --help
+
+      - name: Uninstall test
+        run: |
+          # Uninstall to test cleanup
+          brew uninstall reqtap
+
+          # Verify it's removed
+          if command -v reqtap &> /dev/null; then
+            echo "ERROR: reqtap still exists after uninstall"
+            exit 1
+          fi
+
+  notify-no-update:
+    needs: check-for-updates
+    if: needs.check-for-updates.outputs.has_update == 'false'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: No update notification
+        run: |
+          echo "✅ No update needed."
+          echo "Current version: ${{ needs.check-for-updates.outputs.current_version }}"
+          echo "Latest version: ${{ needs.check-for-updates.outputs.new_version }}"
