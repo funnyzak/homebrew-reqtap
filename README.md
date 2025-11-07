@@ -66,16 +66,6 @@ For detailed usage instructions, please refer to the [official ReqTap documentat
 To update ReqTap to the latest version:
 
 ```bash
-# Update the tap
-brew tap-update funnyzak/reqtap
-
-# Upgrade reqtap
-brew upgrade reqtap
-```
-
-Or simply run:
-
-```bash
 brew update && brew upgrade reqtap
 ```
 
