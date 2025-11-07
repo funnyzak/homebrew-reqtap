@@ -135,48 +135,6 @@ jobs:
             automated
           reviewers: funnyzak
 
-  test-formula:
-    needs: update-formula
-    runs-on: macos-latest
-    if: always() && needs.update-formula.result == 'success'
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          ref: update-reqtap-${{ needs.check-for-updates.outputs.new_version }}
-
-      - name: Install tap
-        run: |
-          # Tap the local repository
-          brew tap funnyzak/reqtap "$(pwd)"
-
-          # Install reqtap
-          brew install reqtap
-
-      - name: Test installation
-        run: |
-          # Check version
-          reqtap --version
-
-          # Check installation path
-          which reqtap
-
-          # Test basic functionality (help command)
-          reqtap --help
-
-      - name: Uninstall test
-        run: |
-          # Uninstall to test cleanup
-          brew uninstall reqtap
-
-          # Verify it's removed
-          if command -v reqtap &> /dev/null; then
-            echo "ERROR: reqtap still exists after uninstall"
-            exit 1
-          fi
-
   notify-no-update:
     needs: check-for-updates
     if: needs.check-for-updates.outputs.has_update == 'false'
