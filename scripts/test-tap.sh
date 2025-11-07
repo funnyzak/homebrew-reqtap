@@ -136,7 +136,7 @@ print_status "Checking required files..."
 required_files=(
     "Formula/reqtap.rb"
     "scripts/update-formula.rb"
-    "README-homebrew.md"
+    "README.md"
     ".github/workflows/update-formula.yml"
     ".github/workflows/ci.yml"
 )

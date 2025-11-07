@@ -170,7 +170,7 @@ jobs:
         run: |
           # Check if required documentation exists
           required_files=(
-            "README-homebrew.md"
+            "README.md"
             "Formula/reqtap.rb"
             "scripts/update-formula.rb"
             ".github/workflows/update-formula.yml"
@@ -187,8 +187,8 @@ jobs:
 
       - name: Validate README links
         run: |
-          # Check if links in README-homebrew.md are valid
-          readme_file="README-homebrew.md"
+          # Check if links in README.md are valid
+          readme_file="README.md"
 
           # Extract URLs and validate them
           urls=$(grep -oE 'https?://[^)]+' "$readme_file" | sort | uniq)
