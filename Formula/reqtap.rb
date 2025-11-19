@@ -4,9 +4,9 @@
 class Reqtap < Formula
   desc "A powerful HTTP request debugging tool built in Go"
   homepage "https://github.com/funnyzak/reqtap"
-  url "https://github.com/funnyzak/reqtap/releases/download/0.2.4/reqtap-darwin-amd64.tar.gz"
-  version "0.2.4"
-  sha256 "sha256:7c55bfe6828f644b37163c8d668394d79d9dc0e5305ee2c01513d117deeadb80"
+  url "https://github.com/funnyzak/reqtap/releases/download/0.3.0/reqtap-darwin-amd64.tar.gz"
+  version "0.3.0"
+  sha256 "sha256:59b98b9368a1fee0f793c3589cdae1446a149696f983169993766ddb7eaa8f6a"
   license "MIT"
 
   livecheck do
@@ -17,13 +17,13 @@ class Reqtap < Formula
   depends_on :macos
 
   on_intel do
-    url "https://github.com/funnyzak/reqtap/releases/download/0.2.4/reqtap-darwin-amd64.tar.gz"
-    sha256 "sha256:7c55bfe6828f644b37163c8d668394d79d9dc0e5305ee2c01513d117deeadb80"
+    url "https://github.com/funnyzak/reqtap/releases/download/0.3.0/reqtap-darwin-amd64.tar.gz"
+    sha256 "sha256:59b98b9368a1fee0f793c3589cdae1446a149696f983169993766ddb7eaa8f6a"
   end
 
   on_arm do
-    url "https://github.com/funnyzak/reqtap/releases/download/0.2.4/reqtap-darwin-arm64.tar.gz"
-    sha256 "sha256:7c55bfe6828f644b37163c8d668394d79d9dc0e5305ee2c01513d117deeadb80"
+    url "https://github.com/funnyzak/reqtap/releases/download/0.3.0/reqtap-darwin-arm64.tar.gz"
+    sha256 "sha256:59b98b9368a1fee0f793c3589cdae1446a149696f983169993766ddb7eaa8f6a"
   end
 
   def install
