@@ -1,7 +1,7 @@
 # Homebrew Reqtap
 
 [![Build Status](https://github.com/funnyzak/homebrew-reqtap/workflows/CI/badge.svg)](https://github.com/funnyzak/homebrew-reqtap/actions)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: AGPL-](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 This is the official Homebrew tap for [ReqTap](https://github.com/funnyzak/reqtap), a powerful HTTP request debugging tool built in Go.
 
