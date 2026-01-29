@@ -113,12 +113,12 @@ class FormulaUpdater
       if name.include?('darwin-amd64')
         assets['amd64'] = {
           url: asset['browser_download_url'],
-          sha256: asset['digest']
+          sha256: clean_digest(asset['digest'])
         }
       elsif name.include?('darwin-arm64')
         assets['arm64'] = {
           url: asset['browser_download_url'],
-          sha256: asset['digest']
+          sha256: clean_digest(asset['digest'])
         }
       end
     end
@@ -160,6 +160,13 @@ class FormulaUpdater
     @formula_content = @formula_content[0...start_idx] + block_content + @formula_content[end_idx + 1..]
 
     puts "🔄 Updated #{block_name} block"
+  end
+
+  def clean_digest(digest)
+    return nil if digest.nil?
+
+    # Remove "sha256:" prefix if present
+    digest.sub(/^sha256:/, '')
   end
 
   def find_block_end(start_idx)
