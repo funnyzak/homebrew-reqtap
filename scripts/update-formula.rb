@@ -86,16 +86,37 @@ class FormulaUpdater
     # Update Apple Silicon (arm64) version
     update_asset('on_arm do', macos_assets['arm64'])
 
-    # Update default URL (Intel)
+    # Update default URL (Intel) - only update the default URL/SHA256 before on_intel block
     default_asset = macos_assets['amd64']
+    
+    # Update default URL (before on_intel block)
     @formula_content = @formula_content.gsub(
       /url "[^"]*reqtap-darwin-amd64[^"]*"/,
       %(url "#{default_asset[:url]}")
     )
-    @formula_content = @formula_content.gsub(
-      /sha256 "[^"]*"/,
-      %(sha256 "#{default_asset[:sha256]}")
-    )
+    
+    # Update default SHA256 - only replace the SHA256 that appears before on_intel block
+    # Find the position of on_intel to limit replacement scope
+    on_intel_pos = @formula_content.index('on_intel do')
+    if on_intel_pos
+      # Split content into before and after on_intel
+      before_block = @formula_content[0...on_intel_pos]
+      after_block = @formula_content[on_intel_pos..]
+      
+      # Only replace SHA256 in the before_block (default section, before any on_ blocks)
+      before_block = before_block.gsub(
+        /sha256 "[^"]*"/,
+        %(sha256 "#{default_asset[:sha256]}")
+      )
+      
+      @formula_content = before_block + after_block
+    else
+      # Fallback: if on_intel not found, only replace first occurrence
+      @formula_content = @formula_content.sub(
+        /sha256 "[^"]*"/,
+        %(sha256 "#{default_asset[:sha256]}")
+      )
+    end
 
     # Write updated formula
     File.write(FORMULA_PATH, @formula_content)
@@ -106,19 +127,28 @@ class FormulaUpdater
     puts '🔍 Finding macOS assets...'
 
     assets = {}
+    checksums = fetch_checksums_from_file
 
     @release_data['assets'].each do |asset|
       name = asset['name']
 
       if name.include?('darwin-amd64')
+        sha256 = extract_sha256(asset['digest']) || checksums[name]
+        unless sha256
+          raise "SHA256 not found for #{name}. Check GitHub API digest or checksums.txt file."
+        end
         assets['amd64'] = {
           url: asset['browser_download_url'],
-          sha256: clean_digest(asset['digest'])
+          sha256: sha256
         }
       elsif name.include?('darwin-arm64')
+        sha256 = extract_sha256(asset['digest']) || checksums[name]
+        unless sha256
+          raise "SHA256 not found for #{name}. Check GitHub API digest or checksums.txt file."
+        end
         assets['arm64'] = {
           url: asset['browser_download_url'],
-          sha256: clean_digest(asset['digest'])
+          sha256: sha256
         }
       end
     end
@@ -129,6 +159,48 @@ class FormulaUpdater
 
     puts "📋 Found assets for Intel (amd64) and Apple Silicon (arm64)"
     assets
+  end
+
+  def fetch_checksums_from_file
+    puts '📥 Fetching checksums from checksums.txt...'
+    checksums = {}
+
+    # Find checksums.txt asset in release
+    checksums_asset = @release_data['assets'].find { |asset| asset['name'] == 'checksums.txt' }
+    return checksums unless checksums_asset
+
+    begin
+      uri = URI(checksums_asset['browser_download_url'])
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+
+      response = http.get(uri)
+      unless response.is_a?(Net::HTTPSuccess)
+        puts "⚠️  Warning: Failed to fetch checksums.txt: #{response.code} #{response.message}"
+        return checksums
+      end
+
+      # Parse checksums.txt file
+      # Format: SHA256  filename
+      response.body.each_line do |line|
+        line = line.strip
+        next if line.empty?
+
+        # Match format: "hash  filename" or "hash\tfilename"
+        if line.match(/^([a-f0-9]{64})\s+(.+)$/i)
+          sha256 = $1
+          filename = $2.strip
+          checksums[filename] = sha256
+        end
+      end
+
+      puts "✅ Loaded #{checksums.size} checksums from checksums.txt"
+    rescue StandardError => e
+      puts "⚠️  Warning: Failed to parse checksums.txt: #{e.message}"
+    end
+
+    checksums
   end
 
   def update_asset(block_name, asset)
@@ -162,10 +234,10 @@ class FormulaUpdater
     puts "🔄 Updated #{block_name} block"
   end
 
-  def clean_digest(digest)
+  def extract_sha256(digest)
+    # GitHub API returns digest in format "sha256:hash", extract just the hash
     return nil if digest.nil?
 
-    # Remove "sha256:" prefix if present
     digest.sub(/^sha256:/, '')
   end
 
